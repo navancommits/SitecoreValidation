@@ -6,43 +6,63 @@ using System.Text.RegularExpressions;
 
 namespace SitecoreValidation.Pipelines.Save
 {
-    public class StripIframeTagsInRTE
-    {
-        public void Process(SaveArgs args)
+        public class StripIframeTagsInRTE
         {
-            Assert.ArgumentNotNull(args, nameof(args));
-
-            foreach (var saveItem in args.Items)
+            public void Process(SaveArgs args)
             {
-                var item = Sitecore.Context.ContentDatabase.GetItem(saveItem.ID, saveItem.Language, saveItem.Version);
-                if (item == null) continue;
+                Assert.ArgumentNotNull(args, nameof(args));
 
-                bool hasChanged = false;
-
-                item.Editing.BeginEdit();
-                try
+                foreach (var saveItem in args.Items)
                 {
-                    foreach (Field field in item.Fields)
+                    var item = Sitecore.Context.ContentDatabase.GetItem(saveItem.ID, saveItem.Language, saveItem.Version);
+                    if (item == null) continue;
+
+                    bool hasChanged = false;
+
+                    item.Editing.BeginEdit();
+                    try
                     {
-                        if (field.TypeKey == "rich text" && !string.IsNullOrEmpty(field.Value))
+                        foreach (Field field in item.Fields)
                         {
-                            string sanitized = Regex.Replace(field.Value, @"<iframe[\s\S]*?</iframe>", string.Empty, RegexOptions.IgnoreCase);
-                            if (sanitized != field.Value)
+                            if (field.TypeKey == "rich text" && !string.IsNullOrEmpty(field.Value))
                             {
-                                field.Value = sanitized;
-                                hasChanged = true;
+                                string originalValue = field.Value;
+                                string cleanedValue = StripIframeTags(originalValue);
+
+                                if (cleanedValue != originalValue)
+                                {
+                                    field.Value = cleanedValue;
+                                    hasChanged = true;
+                                }
                             }
                         }
                     }
-                }
-                finally
-                {
-                    if (hasChanged)
-                        item.Editing.EndEdit();
-                    else
-                        item.Editing.CancelEdit();
+                    finally
+                    {
+                        if (hasChanged)
+                            item.Editing.EndEdit();
+                        else
+                            item.Editing.CancelEdit();
+                    }
                 }
             }
+
+            private string StripIframeTags(string input)
+            {
+                // Remove actual iframe tags
+                string cleaned = Regex.Replace(input, @"<iframe[\s\S]*?</iframe>", string.Empty, RegexOptions.IgnoreCase);
+
+                // Decode HTML-encoded content
+                string decoded = System.Net.WebUtility.HtmlDecode(input);
+                string decodedCleaned = Regex.Replace(decoded, @"<iframe[\s\S]*?</iframe>", string.Empty, RegexOptions.IgnoreCase);
+
+                // If encoded version had iframes removed, return re-encoded string
+                if (decoded != decodedCleaned)
+                {
+                    return System.Net.WebUtility.HtmlEncode(decodedCleaned);
+                }
+
+                return cleaned;
+            }
         }
-    }
 }
